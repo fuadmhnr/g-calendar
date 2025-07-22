@@ -172,10 +172,185 @@ Service account harus diberi explicit access ke Google Calendar melalui sharing 
 - Join requests tersimpan di database dan memerlukan **approval admin**
 - Service account hanya punya permission sesuai yang diberikan di Google Calendar
 
-## Flow Lengkap
+## Workflow Aplikasi
 
-1. **Guest** lihat events (via service account atau fallback OAuth)
-2. **Guest** kirim join request (tersimpan di database)
-3. **Admin** login dan lihat pending requests
-4. **Admin** approve request (menambahkan attendee ke Google Calendar via OAuth)
-5. **Guest** mendapat email invitation dari Google Calendar
+### 🎯 **Overview Sistem**
+
+Aplikasi ini memiliki dua tipe user dengan workflow yang berbeda:
+- **Guest Users**: Dapat melihat events dan request bergabung tanpa login
+- **Admin Users**: Mengelola events dan approve join requests dengan OAuth authentication
+
+### 👤 **Guest User Workflow**
+
+#### 1. **Melihat Events**
+```
+1. Kunjungi homepage (/) 
+   → Otomatis redirect ke /events
+2. Sistem load events via service account (read-only)
+3. Guest melihat list events dengan detail:
+   - Nama event & deskripsi
+   - Tanggal & waktu mulai/selesai
+   - Tombol "Lihat Detail"
+```
+
+#### 2. **Join Event Process**
+```
+1. Guest klik "Lihat Detail" pada event
+2. Melihat detail lengkap event:
+   - Informasi waktu
+   - Peserta yang sudah terdaftar (jika ada)
+   - Google Meet link (jika ada)
+3. Isi form join request:
+   - Email address (required)
+   - Pesan untuk admin (optional)
+4. Submit → Request tersimpan di database
+5. Melihat konfirmasi: "Permintaan bergabung telah dikirim!"
+```
+
+#### 3. **Status Tracking**
+```
+- Jika submit request yang sama lagi:
+  • Pending: "Anda sudah memiliki permintaan yang menunggu persetujuan"
+  • Approved: "Anda sudah bergabung dengan event ini!"
+```
+
+### 👨‍💼 **Admin User Workflow**
+
+#### 1. **Login Process**
+```
+1. Kunjungi homepage → Klik "Login Admin"
+2. Redirect ke Google OAuth consent screen
+3. Login dengan Google account
+4. Grant calendar permissions
+5. Redirect kembali ke /calendar (admin dashboard)
+```
+
+#### 2. **Manage Events**
+```
+Admin Dashboard (/calendar):
+├── View all events
+├── Create new event
+├── Edit existing event  
+├── Delete event
+└── View join requests (dengan badge counter)
+```
+
+#### 3. **Join Request Management**
+```
+1. Klik "Permintaan Bergabung" (dengan notif badge jika ada pending)
+2. Melihat requests digroup per event:
+   - Email requester
+   - Pesan dari user
+   - Tanggal request
+3. Actions per request:
+   ├── APPROVE: 
+   │   ├── Add attendee ke Google Calendar via OAuth
+   │   ├── Send email invitation otomatis
+   │   ├── Update status di database → "approved"
+   │   └── Track admin yang approve
+   └── REJECT:
+       ├── Update status di database → "rejected"  
+       └── Track admin yang reject
+```
+
+### 🔄 **Complete User Journey Example**
+
+#### **Scenario: Marketing Event Join Process**
+
+**Guest Side:**
+```
+1. Sarah mengunjungi website
+   → Melihat "Marketing Workshop - 25 Juli 2025"
+2. Klik "Lihat Detail" 
+   → Melihat workshop 09:00-17:00, Google Meet included
+3. Isi email: sarah@company.com
+   Pesan: "Saya tertarik untuk belajar digital marketing"
+4. Submit → "Permintaan bergabung telah dikirim!"
+```
+
+**Admin Side:**
+```
+1. Admin login → Dashboard shows "Permintaan Bergabung (1)"
+2. Klik badge → Melihat request dari Sarah
+3. Review: sarah@company.com + pesan tentang digital marketing
+4. Klik "Setujui" → Konfirmasi dialog
+5. Sistem:
+   ├── Add Sarah sebagai attendee di Google Calendar
+   ├── Google otomatis send invitation email ke Sarah
+   ├── Update database: status = "approved", approved_by = admin@company.com
+   └── Show: "Permintaan bergabung telah disetujui!"
+```
+
+**Result:**
+```
+✅ Sarah mendapat email dari Google Calendar
+✅ Sarah bisa join Google Meet
+✅ Sarah muncul di attendee list
+✅ Admin track siapa yang approve & kapan
+```
+
+### 🔐 **Authentication Flow Detail**
+
+#### **Guest Access (No Login Required)**
+```
+Guest Request → Service Account → Google Calendar API (Read-Only)
+├── IF service account available: Direct API call
+├── IF service account not available: Fallback to OAuth token  
+└── IF no auth available: Empty collection (graceful degradation)
+```
+
+#### **Admin Access (OAuth Required)**
+```
+Admin Action → OAuth Token → Google Calendar API (Full Access)
+├── Create/Edit/Delete events
+├── Add/Remove attendees  
+├── Send email invitations
+└── Full calendar management
+```
+
+### 🚨 **Error Handling Scenarios**
+
+#### **Common Issues & Solutions:**
+```
+1. Guest tidak bisa lihat events:
+   → Check: service account credentials & calendar sharing
+   
+2. Admin tidak bisa approve requests:
+   → Check: OAuth token valid & calendar permissions
+   
+3. Email invitations tidak terkirim:
+   → Check: sendUpdates parameter & attendee email valid
+   
+4. Duplicate join requests:
+   → Sistem otomatis detect & prevent dengan unique constraint
+```
+
+### 📊 **Database State Changes**
+
+```
+JOIN REQUEST LIFECYCLE:
+
+Initial State:
+join_requests table empty
+
+Guest Submit:
+├── INSERT: event_id, email, status='pending', message, created_at
+└── CONSTRAINT: unique(event_id, email) prevents duplicates
+
+Admin Approve:
+├── UPDATE: status='approved', approved_at=now(), approved_by=admin_email
+└── EXTERNAL: Add attendee to Google Calendar
+
+Admin Reject:
+├── UPDATE: status='rejected', approved_by=admin_email  
+└── NO EXTERNAL ACTION
+```
+
+### 🎯 **Key Success Metrics**
+
+- ✅ Guest dapat lihat events tanpa barrier
+- ✅ Join requests tracked di database
+- ✅ Admin approval mengirim real invitations
+- ✅ Zero manual email sending required
+- ✅ Automatic duplicate prevention
+- ✅ Full audit trail untuk approval actions
