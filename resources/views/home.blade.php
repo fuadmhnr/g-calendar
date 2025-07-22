@@ -8,20 +8,20 @@
     <div class="bg-white overflow-hidden shadow-sm sm:rounded-lg">
         <div class="p-6 bg-white border-b border-gray-200">
             <div class="text-center py-8">
-                <h1 class="text-3xl font-bold text-gray-800 mb-4">Welcome to Google Calendar Integration</h1>
-                <p class="text-gray-600 mb-8">Browse upcoming events and join the ones you're interested in.</p>
+                <h1 class="text-3xl font-bold text-gray-800 mb-4">Selamat Datang di Sistem Kalender</h1>
+                <p class="text-gray-600 mb-8">Lihat event yang akan datang dan bergabunglah dengan event yang Anda minati.</p>
                 
                 <div class="flex justify-center space-x-4">
                     <a href="{{ route('guest.index') }}" class="inline-flex items-center px-6 py-3 bg-indigo-600 border border-transparent rounded-md font-semibold text-sm text-white uppercase tracking-widest hover:bg-indigo-700 focus:bg-indigo-700 active:bg-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition ease-in-out duration-150">
-                        View Events
+                        Lihat Event
                     </a>
                     @if(file_exists(storage_path('app/google-calendar/oauth-token.json')))
                     <a href="{{ route('calendar.index') }}" class="inline-flex items-center px-6 py-3 bg-green-600 border border-transparent rounded-md font-semibold text-sm text-white uppercase tracking-widest hover:bg-green-700 focus:bg-green-700 active:bg-green-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition ease-in-out duration-150">
-                        Admin Dashboard
+                        Dashboard Admin
                     </a>
                     @else
                     <a href="{{ route('google.redirect') }}" class="inline-flex items-center px-6 py-3 bg-green-600 border border-transparent rounded-md font-semibold text-sm text-white uppercase tracking-widest hover:bg-green-700 focus:bg-green-700 active:bg-green-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 transition ease-in-out duration-150">
-                        Admin Login
+                        Login Admin
                     </a>
                     @endif
                 </div>

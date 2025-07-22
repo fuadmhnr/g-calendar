@@ -4,9 +4,20 @@
             <h2 class="font-semibold text-xl text-gray-800 leading-tight">
                 {{ __('Google Calendar Events') }}
             </h2>
-            <a href="{{ route('calendar.create') }}" class="inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-700 focus:bg-indigo-700 active:bg-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition ease-in-out duration-150">
-                Create New Event
-            </a>
+            <div class="flex space-x-2">
+                @php
+                    $pendingRequestsCount = \App\Models\JoinRequest::pending()->count();
+                @endphp
+                <a href="{{ route('calendar.join-requests') }}" class="inline-flex items-center px-4 py-2 bg-yellow-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-yellow-700 focus:bg-yellow-700 active:bg-yellow-900 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:ring-offset-2 transition ease-in-out duration-150">
+                    Permintaan Bergabung
+                    @if($pendingRequestsCount > 0)
+                        <span class="ml-2 bg-white text-yellow-800 rounded-full px-2 py-1 text-xs font-bold">{{ $pendingRequestsCount }}</span>
+                    @endif
+                </a>
+                <a href="{{ route('calendar.create') }}" class="inline-flex items-center px-4 py-2 bg-indigo-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-700 focus:bg-indigo-700 active:bg-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition ease-in-out duration-150">
+                    Buat Event Baru
+                </a>
+            </div>
         </div>
     </x-slot>
 

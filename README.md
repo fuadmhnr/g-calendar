@@ -1,24 +1,23 @@
-# Google Calendar Integration with Laravel
+# Google Calendar Integration dengan Guest Access
 
-This project demonstrates how to integrate Google Calendar with Laravel using the spatie/laravel-google-calendar package with OAuth authentication.
+Aplikasi ini mendemonstrasikan integrasi Google Calendar dengan Laravel menggunakan package spatie/laravel-google-calendar dengan fitur guest access dan OAuth authentication untuk admin.
 
-## Features
+## Fitur
 
-- OAuth authentication with Google
-- List calendar events
-- Create new events
-- Edit existing events
-- Delete events
+- **Guest Access**: Users dapat melihat events tanpa login
+- **Join Request System**: Guest dapat request bergabung ke event
+- **Admin OAuth**: Admin login dengan Google OAuth untuk manage events dan approve join requests
+- List, create, edit, dan delete calendar events (admin only)
 
-## Requirements
+## Persyaratan
 
 - PHP 8.2+
 - Laravel 12.0+
-- Google Cloud Platform account with Calendar API enabled
+- Google Cloud Platform account dengan Calendar API enabled
 
-## Installation
+## Instalasi
 
-1. Clone the repository
+1. Clone repository
 
 ```bash
 git clone <repository-url>
@@ -31,14 +30,14 @@ cd g-calendar
 composer install
 ```
 
-3. Copy the environment file and generate application key
+3. Copy environment file dan generate application key
 
 ```bash
 cp .env.example .env
 php artisan key:generate
 ```
 
-4. Configure the database
+4. Configure database
 
 ```bash
 touch database/database.sqlite
@@ -50,49 +49,133 @@ touch database/database.sqlite
 php artisan migrate
 ```
 
-## Google Calendar API Setup
+## Setup Google Calendar API
 
-1. Go to the [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project
-3. Enable the Google Calendar API
-4. Create OAuth 2.0 credentials (Web application type)
-5. Add authorized redirect URIs: `http://localhost:8000/google/callback`
-6. Download the credentials JSON file
-7. Create the directory structure and place the credentials file:
+### Opsi 1: Service Account (Recommended untuk Guest Access)
 
-```bash
-mkdir -p storage/app/google-calendar
-cp path/to/downloaded/credentials.json storage/app/google-calendar/oauth-credentials.json
+**Langkah untuk membuat Service Account:**
+
+1. Buka [Google Cloud Console](https://console.cloud.google.com/)
+2. Buat project baru atau pilih existing project
+3. Enable Google Calendar API
+4. Buka "Credentials" → "Create Credentials" → "Service Account"
+5. Isi nama service account dan create
+6. Di halaman service account, klik "Keys" → "Add Key" → "Create New Key" → "JSON"
+7. Download file JSON credentials
+8. Rename file menjadi `service-account-credentials.json`
+9. Copy ke `storage/app/google-calendar/service-account-credentials.json`
+
+**Berikan akses calendar ke service account:**
+
+1. Buka Google Calendar di browser
+2. Di sidebar kiri, klik calendar yang ingin dishare
+3. Klik "Settings and sharing"
+4. Di "Share with specific people", klik "Add people"
+5. Masukkan email service account (format: `nama@project-id.iam.gserviceaccount.com`)
+6. Set permission ke "Make changes to events" 
+7. Klik "Send"
+
+### Opsi 2: OAuth Credentials (Untuk Admin Access)
+
+1. Di Google Cloud Console, buat OAuth 2.0 credentials (Web application type)
+2. Tambahkan authorized redirect URIs: `http://localhost:8000/google/callback`
+3. Download credentials JSON file
+4. Copy ke `storage/app/google-calendar/oauth-credentials.json`
+
+## Konfigurasi Environment
+
+Update file `.env`:
+
+```env
+GOOGLE_CALENDAR_AUTH_PROFILE=service_account
+GOOGLE_CALENDAR_ID=your-calendar-id@gmail.com
 ```
 
-8. Update your `.env` file with the following:
+**Cara mendapatkan Calendar ID:**
+1. Buka Google Calendar
+2. Klik settings calendar yang ingin digunakan
+3. Scroll ke "Calendar ID" dan copy
 
-```
-GOOGLE_CALENDAR_AUTH_PROFILE=oauth
-GOOGLE_CALENDAR_ID=your-email@gmail.com
-```
+## Struktur Akses
 
-## Usage
+### Guest Users (Tanpa Login)
+- 🔍 Lihat semua events di `/events`
+- 📝 Request bergabung ke event dengan email
+- ✅ Otomatis redirect ke events dari homepage
 
-1. Start the Laravel development server
+### Admin Users (Dengan OAuth Login)
+- 🔐 Login via `/google/redirect`
+- 📅 Manage events di `/calendar`
+- ✅ Approve/reject join requests di `/calendar/join-requests`
+- ➕ Create, edit, delete events
+
+## Cara Penggunaan
+
+1. **Start server**
 
 ```bash
 php artisan serve
 ```
 
-2. Visit `http://localhost:8000` in your browser
-3. Click on "View Calendar" to authenticate with Google
-4. After authentication, you'll be redirected to the calendar page
-5. You can now view, create, edit, and delete events
+2. **Guest access**: Langsung kunjungi `http://localhost:8000` - akan redirect ke events
+3. **Admin login**: Klik "Login Admin" untuk authentication
+4. **Join events**: Guest click event → isi email → admin approve di dashboard
 
-## How It Works
+## Troubleshooting
 
-- The application uses OAuth 2.0 to authenticate with Google
-- When you first access the calendar, you'll be redirected to Google's authentication page
-- After granting permission, you'll be redirected back to the application
-- The application stores the OAuth token in `storage/app/google-calendar/oauth-token.json`
-- The token is used to make API calls to Google Calendar
+### Guest tidak bisa lihat events
 
-## License
+**Penyebab**: Service account belum disetup atau tidak punya akses ke calendar
 
-The MIT License (MIT). Please see [License File](LICENSE) for more information.
+**Solusi**:
+1. Pastikan file `storage/app/google-calendar/service-account-credentials.json` ada
+2. Pastikan service account sudah diberi akses ke Google Calendar
+3. Pastikan `GOOGLE_CALENDAR_ID` di `.env` benar
+
+**Alternatif fallback**: Jika service account tidak tersedia, sistem akan coba gunakan OAuth token (jika admin sudah pernah login)
+
+### Error "Calendar ID not configured"
+
+Update `GOOGLE_CALENDAR_ID` di `.env` file dengan calendar ID yang benar.
+
+### Permission denied untuk service account
+
+Service account harus diberi explicit access ke Google Calendar melalui sharing settings.
+
+## Arsitektur Sistem
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Guest Users   │    │   Admin Users    │    │ Google Calendar │
+│                 │    │                  │    │                 │
+│ View Events     │◄───┤ OAuth Login      │◄───┤ OAuth API       │
+│ Join Requests   │    │ Manage Events    │    │                 │
+│                 │    │ Approve Requests │    │                 │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+          │                        │                        ▲
+          │                        │                        │
+          ▼                        ▼                        │
+┌─────────────────────────────────────────────────────────┘
+│              Laravel Application
+│
+│  ┌─────────────────┐  ┌──────────────────┐
+│  │ Service Account │  │ OAuth Credentials│
+│  │ (Guest Access)  │  │ (Admin Access)   │
+│  └─────────────────┘  └──────────────────┘
+└─────────────────────────────────────────────────────────
+```
+
+## Keamanan
+
+- Guest access adalah **read-only** via service account
+- Admin access memerlukan **OAuth authentication**
+- Join requests tersimpan di database dan memerlukan **approval admin**
+- Service account hanya punya permission sesuai yang diberikan di Google Calendar
+
+## Flow Lengkap
+
+1. **Guest** lihat events (via service account atau fallback OAuth)
+2. **Guest** kirim join request (tersimpan di database)
+3. **Admin** login dan lihat pending requests
+4. **Admin** approve request (menambahkan attendee ke Google Calendar via OAuth)
+5. **Guest** mendapat email invitation dari Google Calendar

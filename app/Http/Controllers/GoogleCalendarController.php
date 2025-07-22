@@ -8,10 +8,12 @@ use Carbon\Carbon;
 use Google\Service\Calendar\EventDateTime;
 use Google\Service\Calendar\Event as GoogleEvent;
 use Google\Service\Calendar\Events;
+use Google\Service\Calendar\EventAttendee;
 use Google\Client;
 use Google\Service\Calendar;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Redirect;
+use App\Models\JoinRequest;
 
 class GoogleCalendarController extends Controller
 {
@@ -361,5 +363,163 @@ class GoogleCalendarController extends Controller
 
         return redirect()->route('calendar.index')
             ->with('success', 'Event deleted successfully');
+    }
+
+    /**
+     * Display pending join requests for admin
+     */
+    public function joinRequests()
+    {
+        if (!$this->isAuthenticated()) {
+            return redirect()->route('google.redirect');
+        }
+
+        $joinRequests = JoinRequest::with([])
+            ->pending()
+            ->orderBy('created_at', 'desc')
+            ->get();
+
+        // Group by event and get event details
+        $requestsByEvent = $joinRequests->groupBy('event_id');
+        $eventsData = [];
+
+        foreach ($requestsByEvent as $eventId => $requests) {
+            try {
+                $event = Event::find($eventId);
+                if ($event) {
+                    $eventsData[] = [
+                        'event' => $event,
+                        'requests' => $requests
+                    ];
+                }
+            } catch (\Exception $e) {
+                \Illuminate\Support\Facades\Log::error('Error finding event: ' . $e->getMessage());
+            }
+        }
+
+        return view('calendar.join-requests', compact('eventsData'));
+    }
+
+    /**
+     * Approve a join request and add user to Google Calendar event
+     */
+    public function approveJoinRequest(JoinRequest $joinRequest)
+    {
+        if (!$this->isAuthenticated()) {
+            return redirect()->route('google.redirect');
+        }
+
+        try {
+            // Use OAuth client to add attendee (not service account)
+            $this->addAttendeeViaOAuth($joinRequest->event_id, $joinRequest->email);
+
+            // Get current user's email from Google client
+            $userEmail = $this->getCurrentUserEmail();
+
+            // Mark the join request as approved
+            $joinRequest->approve($userEmail);
+
+            return redirect()->route('calendar.join-requests')
+                ->with('success', 'Permintaan bergabung telah disetujui dan user ditambahkan ke event!');
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error approving join request: ' . $e->getMessage());
+            
+            return redirect()->route('calendar.join-requests')
+                ->with('error', 'Tidak dapat menyetujui permintaan bergabung. Silakan coba lagi.');
+        }
+    }
+
+    /**
+     * Reject a join request
+     */
+    public function rejectJoinRequest(JoinRequest $joinRequest)
+    {
+        if (!$this->isAuthenticated()) {
+            return redirect()->route('google.redirect');
+        }
+
+        try {
+            // Get current user's email from Google client
+            $userEmail = $this->getCurrentUserEmail();
+
+            // Mark the join request as rejected
+            $joinRequest->reject($userEmail);
+
+            return redirect()->route('calendar.join-requests')
+                ->with('success', 'Permintaan bergabung telah ditolak.');
+
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error rejecting join request: ' . $e->getMessage());
+            
+            return redirect()->route('calendar.join-requests')
+                ->with('error', 'Tidak dapat menolak permintaan bergabung. Silakan coba lagi.');
+        }
+    }
+
+    /**
+     * Add attendee to Google Calendar event using OAuth credentials
+     */
+    private function addAttendeeViaOAuth($eventId, $email)
+    {
+        if (!$this->client || !$this->service) {
+            throw new \Exception('OAuth client not initialized');
+        }
+
+        $calendarId = config('google-calendar.calendar_id');
+        if (!$calendarId) {
+            throw new \Exception('Calendar ID not configured');
+        }
+
+        // Get the event using OAuth client
+        $event = $this->service->events->get($calendarId, $eventId);
+        
+        if (!$event) {
+            throw new \Exception('Event not found');
+        }
+
+        // Get existing attendees
+        $attendees = $event->getAttendees() ?: [];
+        
+        // Check if attendee already exists
+        foreach ($attendees as $attendee) {
+            if ($attendee->getEmail() === $email) {
+                // Attendee already exists, don't add again
+                return;
+            }
+        }
+
+        // Create new attendee
+        $newAttendee = new EventAttendee();
+        $newAttendee->setEmail($email);
+        $newAttendee->setResponseStatus('needsAction');
+
+        // Add to attendees list
+        $attendees[] = $newAttendee;
+        $event->setAttendees($attendees);
+
+        // Update the event
+        $this->service->events->update($calendarId, $eventId, $event, [
+            'sendUpdates' => 'all' // Send email invitations
+        ]);
+    }
+
+    /**
+     * Get current authenticated user's email
+     */
+    private function getCurrentUserEmail()
+    {
+        try {
+            if ($this->client && $this->client->getAccessToken()) {
+                // Get user info from Google
+                $oauth2 = new \Google\Service\Oauth2($this->client);
+                $userInfo = $oauth2->userinfo->get();
+                return $userInfo->email;
+            }
+        } catch (\Exception $e) {
+            \Illuminate\Support\Facades\Log::error('Error getting user email: ' . $e->getMessage());
+        }
+        
+        return 'Unknown Admin';
     }
 }

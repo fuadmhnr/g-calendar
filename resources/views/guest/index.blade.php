@@ -2,7 +2,7 @@
     <x-slot name="header">
         <div class="flex justify-between items-center">
             <h2 class="font-semibold text-xl text-gray-800 leading-tight">
-                {{ __('Upcoming Events') }}
+                {{ __('Event Yang Akan Datang') }}
             </h2>
         </div>
     </x-slot>
@@ -18,13 +18,13 @@
                                     Event
                                 </th>
                                 <th class="px-6 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                    Start
+                                    Mulai
                                 </th>
                                 <th class="px-6 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                    End
+                                    Selesai
                                 </th>
                                 <th class="px-6 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">
-                                    Actions
+                                    Aksi
                                 </th>
                             </tr>
                         </thead>
@@ -49,7 +49,7 @@
                                     </td>
                                     <td class="px-6 py-4 whitespace-no-wrap text-right border-b border-gray-200 text-sm leading-5 font-medium">
                                         <a href="{{ route('guest.show', $event->id) }}" class="inline-flex items-center px-3 py-1 bg-indigo-600 border border-transparent rounded-md font-semibold text-xs text-white uppercase tracking-widest hover:bg-indigo-700 focus:bg-indigo-700 active:bg-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition ease-in-out duration-150">
-                                            View Details
+                                            Lihat Detail
                                         </a>
                                     </td>
                                 </tr>
@@ -59,7 +59,7 @@
                 </div>
             @else
                 <div class="text-center py-8">
-                    <p class="text-gray-500 mb-4">No upcoming events found.</p>
+                    <p class="text-gray-500 mb-4">Tidak ada event yang akan datang.</p>
                 </div>
             @endif
         </div>

@@ -5,7 +5,7 @@ use App\Http\Controllers\GoogleCalendarController;
 use App\Http\Controllers\GuestCalendarController;
 
 Route::get('/', function () {
-    return view('home');
+    return redirect()->route('guest.index');
 })->name('home');
 
 // Guest routes - no authentication required
@@ -25,4 +25,9 @@ Route::middleware(['google.auth'])->group(function () {
     Route::get('/calendar/{event}/edit', [GoogleCalendarController::class, 'edit'])->name('calendar.edit');
     Route::put('/calendar/{event}', [GoogleCalendarController::class, 'update'])->name('calendar.update');
     Route::delete('/calendar/{event}', [GoogleCalendarController::class, 'destroy'])->name('calendar.destroy');
+    
+    // Join request management routes
+    Route::get('/calendar/join-requests', [GoogleCalendarController::class, 'joinRequests'])->name('calendar.join-requests');
+    Route::post('/calendar/join-requests/{joinRequest}/approve', [GoogleCalendarController::class, 'approveJoinRequest'])->name('calendar.approve-join-request');
+    Route::post('/calendar/join-requests/{joinRequest}/reject', [GoogleCalendarController::class, 'rejectJoinRequest'])->name('calendar.reject-join-request');
 });

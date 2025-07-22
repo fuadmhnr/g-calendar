@@ -6,6 +6,9 @@ use Illuminate\Http\Request;
 use Spatie\GoogleCalendar\Event;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\Log;
+use App\Models\JoinRequest;
+use Google\Client;
+use Google\Service\Calendar;
 
 class GuestCalendarController extends Controller
 {
@@ -67,46 +70,72 @@ class GuestCalendarController extends Controller
     {
         // Validate the request
         $request->validate([
-            'email' => 'required|email'
+            'email' => 'required|email',
+            'message' => 'nullable|string|max:500'
         ]);
 
         // Validate that the event exists before proceeding
         try {
-            $event = Event::find($eventId);
+            $event = $this->getEventWithoutAuth($eventId);
             
             if (!$event) {
                 throw new \Exception('Event not found');
             }
 
-            // Add the user as an attendee
-            $event->addAttendee([
+            // Check if user already has a pending or approved request
+            $existingRequest = JoinRequest::where('event_id', $eventId)
+                ->where('email', $request->email)
+                ->first();
+
+            if ($existingRequest) {
+                if ($existingRequest->isPending()) {
+                    return redirect()->route('guest.show', $eventId)
+                        ->with('info', 'Anda sudah memiliki permintaan bergabung yang sedang menunggu persetujuan untuk event ini.');
+                } elseif ($existingRequest->isApproved()) {
+                    return redirect()->route('guest.show', $eventId)
+                        ->with('info', 'Anda sudah bergabung dengan event ini!');
+                }
+            }
+
+            // Create join request
+            JoinRequest::create([
+                'event_id' => $eventId,
                 'email' => $request->email,
+                'message' => $request->message,
+                'status' => 'pending'
             ]);
             
-            $event->save();
-            
             return redirect()->route('guest.show', $eventId)
-                ->with('success', 'You have been added to the event! Check your email for details.');
+                ->with('success', 'Permintaan bergabung Anda telah dikirim! Admin akan menambahkan Anda ke event setelah persetujuan.');
 
         } catch (\Exception $e) {
             Log::error('Error in join method: ' . $e->getMessage());
             
             return redirect()->route('guest.index')
-                ->with('error', 'Unable to add you to the event. Please try again later.');
+                ->with('error', 'Tidak dapat mengirim permintaan bergabung. Silakan coba lagi nanti.');
         }
     }
     
-
-    
     /**
-     * Get events without requiring authentication
+     * Get events without requiring authentication using service account or public access
      */
     private function getEventsWithoutAuth()
     {
-        // This is a simplified version that assumes the service account has access to the calendar
-        // In a real application, you might need to use a service account with proper permissions
         try {
-            return Event::get();
+            // First try to use service account if available
+            if ($this->hasServiceAccount()) {
+                return $this->getEventsViaServiceAccount();
+            }
+            
+            // If no service account, try to use existing OAuth token if available
+            if ($this->hasOAuthToken()) {
+                return Event::get();
+            }
+            
+            // If no authentication available, return empty collection
+            Log::warning('No authentication method available for guest calendar access');
+            return collect([]);
+            
         } catch (\Exception $e) {
             Log::error('Error in getEventsWithoutAuth: ' . $e->getMessage());
             return collect([]);
@@ -118,15 +147,148 @@ class GuestCalendarController extends Controller
      */
     private function getEventWithoutAuth($eventId)
     {
-        // This is a simplified version that assumes the service account has access to the calendar
-        // In a real application, you might need to use a service account with proper permissions
         try {
-            return Event::find($eventId);
+            // First try to use service account if available
+            if ($this->hasServiceAccount()) {
+                return $this->getEventViaServiceAccount($eventId);
+            }
+            
+            // If no service account, try to use existing OAuth token if available
+            if ($this->hasOAuthToken()) {
+                return Event::find($eventId);
+            }
+            
+            // If no authentication available, return null
+            Log::warning('No authentication method available for guest calendar access');
+            return null;
+            
         } catch (\Exception $e) {
             Log::error('Error in getEventWithoutAuth: ' . $e->getMessage());
             return null;
         }
     }
     
-
+    /**
+     * Check if service account credentials are available
+     */
+    private function hasServiceAccount()
+    {
+        return file_exists(storage_path('app/google-calendar/service-account-credentials.json'));
+    }
+    
+    /**
+     * Check if OAuth token is available
+     */
+    private function hasOAuthToken()
+    {
+        return file_exists(storage_path('app/google-calendar/oauth-token.json'));
+    }
+    
+    /**
+     * Get events using service account
+     */
+    private function getEventsViaServiceAccount()
+    {
+        $client = new Client();
+        $client->setAuthConfig(storage_path('app/google-calendar/service-account-credentials.json'));
+        $client->addScope(Calendar::CALENDAR_READONLY);
+        
+        $service = new Calendar($client);
+        $calendarId = config('google-calendar.calendar_id');
+        
+        if (!$calendarId) {
+            throw new \Exception('Calendar ID not configured');
+        }
+        
+        $optParams = [
+            'maxResults' => 50,
+            'orderBy' => 'startTime',
+            'singleEvents' => true,
+            'timeMin' => Carbon::now()->toISOString(),
+        ];
+        
+        $results = $service->events->listEvents($calendarId, $optParams);
+        $events = $results->getItems();
+        
+        // Convert to Laravel collection with similar structure to spatie/laravel-google-calendar
+        return collect($events)->map(function ($event) {
+            $eventObj = new \stdClass();
+            $eventObj->id = $event->getId();
+            $eventObj->name = $event->getSummary();
+            $eventObj->description = $event->getDescription();
+            
+            // Handle start time
+            $start = $event->getStart();
+            if ($start->getDateTime()) {
+                $eventObj->startDateTime = Carbon::parse($start->getDateTime());
+            } elseif ($start->getDate()) {
+                $eventObj->startDateTime = Carbon::parse($start->getDate());
+            } else {
+                $eventObj->startDateTime = Carbon::now();
+            }
+            
+            // Handle end time
+            $end = $event->getEnd();
+            if ($end->getDateTime()) {
+                $eventObj->endDateTime = Carbon::parse($end->getDateTime());
+            } elseif ($end->getDate()) {
+                $eventObj->endDateTime = Carbon::parse($end->getDate());
+            } else {
+                $eventObj->endDateTime = Carbon::now()->addHour();
+            }
+            
+            $eventObj->googleEvent = $event;
+            
+            return $eventObj;
+        });
+    }
+    
+    /**
+     * Get a specific event using service account
+     */
+    private function getEventViaServiceAccount($eventId)
+    {
+        $client = new Client();
+        $client->setAuthConfig(storage_path('app/google-calendar/service-account-credentials.json'));
+        $client->addScope(Calendar::CALENDAR_READONLY);
+        
+        $service = new Calendar($client);
+        $calendarId = config('google-calendar.calendar_id');
+        
+        if (!$calendarId) {
+            throw new \Exception('Calendar ID not configured');
+        }
+        
+        $event = $service->events->get($calendarId, $eventId);
+        
+        // Convert to similar structure as spatie/laravel-google-calendar
+        $eventObj = new \stdClass();
+        $eventObj->id = $event->getId();
+        $eventObj->name = $event->getSummary();
+        $eventObj->description = $event->getDescription();
+        
+        // Handle start time
+        $start = $event->getStart();
+        if ($start->getDateTime()) {
+            $eventObj->startDateTime = Carbon::parse($start->getDateTime());
+        } elseif ($start->getDate()) {
+            $eventObj->startDateTime = Carbon::parse($start->getDate());
+        } else {
+            $eventObj->startDateTime = Carbon::now();
+        }
+        
+        // Handle end time
+        $end = $event->getEnd();
+        if ($end->getDateTime()) {
+            $eventObj->endDateTime = Carbon::parse($end->getDateTime());
+        } elseif ($end->getDate()) {
+            $eventObj->endDateTime = Carbon::parse($end->getDate());
+        } else {
+            $eventObj->endDateTime = Carbon::now()->addHour();
+        }
+        
+        $eventObj->googleEvent = $event;
+        
+        return $eventObj;
+    }
 }
